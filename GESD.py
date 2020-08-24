@@ -1,0 +1,226 @@
+# credit: https://github.com/HamishWoodrow
+
+from __future__ import division
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+
+class anom_detect():
+    """Anomaly detection for time series data
+
+    The method can be used to computed a moving average based on a certain
+    window size, using a discrete linear convolution method.  Anomalous Points
+    can then be found based on a defined singifcance level using an Extreme Studentized
+    deviate (ESD) test.
+
+    Parameters
+    ----------
+    method : str
+        Method used in linear convolution method for dealing with boundaries
+    window : int
+        Window size to average data points over for moving average calculation
+    max_outliers : int
+        Maximum number of outliers to search for, if set to default
+        then it will be set to the length of data set.  It is recommended
+        to limit this value to speed up computation.
+    alpha : float
+        Significance level for ESD test
+    mode :  {full, valid, same}, default same
+        Method used in linear convolution method for dealing with boundaries
+        refer to numpy.convolve for more details regarding methods
+
+    Notes
+    -----
+    The ESD test can only be used if the residuals are aproximately normally
+    distributed this condition can be checked using the normality method.
+    The 'same' option is used for convolution method by default, this means
+    that the window of averaging must intersect with data points with a
+    length of >len(lag)/2.  This improves dealing with boundary issues.
+
+    References
+    ----------
+    [1] http://www.itl.nist.gov/div898/handbook/eda/section3/eda35h3.htm
+    [2] https://docs.scipy.org/doc/numpy/reference/generated/numpy.convolve.html
+    """
+    def __init__(self,method='average',window=5,max_outliers=None,alpha=0.05,mode='same'):
+        self.method = method
+        self.window = window
+        self.max_outliers = max_outliers
+        self.alpha = alpha
+        self.mode = mode
+
+    def moving_average(self,f_t):
+        '''A moving average calculation (low pass filter) based on discrete
+        linear convolution
+
+        A moving average is calculated using discrete linear convolution.
+
+        Parameters
+        ----------
+        f_t : numpy.array
+            Data to calculate moving average
+
+        Attributes
+        ----------
+        rolling_mean : numpy.ndarray
+            The rolling average (filtered) data calcualated based on the window
+            size set and the inputted raw data.
+        Notes
+        -----
+        For the moment the implementation does not handle sparse time series data
+        ensure that the data does not have gaps > window or else the averaging will
+        be greatly impacted.  Fill in missing data if possible.
+        '''
+        if type(f_t) is not np.ndarray:
+            raise TypeError\
+                ('Expected one dimensional numpy array.')
+        if f_t.shape[1] != 1:
+            raise IndexError\
+                ('Expected one dimensional numpy array, %d dimensions given.' % (f_t.shape[1]))
+
+        f_t = f_t.flatten()
+        window = self.window
+        mode = self.mode
+        g_t = np.ones(int(window))/float(window)
+        # Deal with boundaries with atleast lag/2 day window
+        #mode = 'same'
+        rolling_mean = np.convolve(f_t,g_t,mode)
+        self.rolling_mean = rolling_mean
+        return rolling_mean
+
+    def deviation_stats(self,df):
+        '''Calculates standard deviation statistics for data
+
+        This function calculates the standard deviation of the dataset
+        and adds the stationary standard deviation (1 and 2 sigma) to the
+        moving average.  For displaying the standard deviation on the Anomaly
+        plot.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            DataFrame containing timeseries data points
+
+        Attributes
+        ----------
+        df : pandas.DataFrame
+            DataFrame containing columns with original data, rolling average
+            and standard deviation for 1 and 2 sigma above and below the
+            rolling average.
+        Notes
+        -----
+        For the moment no rolling standard deviation is implemented.  The
+        stationary standard deviation calculated is before removal of Anomalous
+        points, so will be higher than the actual std. deviation if these where
+        removed.
+        '''
+
+        df['mean_count'] = self.rolling_mean
+        df['residual'] = df.iloc[:,0] - self.rolling_mean
+        std_resid = np.std(df.residual)
+        df['pos_std'] = df.mean_count + std_resid
+        df['neg_std'] = df.mean_count - std_resid
+        df['pos_std_2'] = df.mean_count + 2*std_resid
+        df['neg_std_2'] = df.mean_count - 2*std_resid
+        return df
+
+    def esd_test(self,df_in):
+        '''Implementation of Generalized ESD test for Outliers
+
+        An extension to Grubbs test to k unknown outliers, all that requires
+        specified is the maximum number of outliers and the confidence
+        interval.  The data must be approximately normal to apply the test.
+        From Rosner, 1983 [1].
+
+        Parameters
+        ----------
+        df_in : list
+            Data to be tested for outliers, must be approximately normal
+
+        Attributes
+        ----------
+        ESD_stats : Pandas.DataFrame
+            Dataframe containing the ESD test statistic and Critical value.
+        outliers : list
+            List containing tuple of dataframe index of outlier & the
+            x value found to be anomolous.
+
+        References
+        ----------
+        [1] http://www.itl.nist.gov/div898/handbook/eda/section3/eda35h3.htm
+        '''
+        ind = list(df_in.index)
+        x = list(df_in.values)
+        outliers = []
+        res_lst = [] # ESD Test Statistic for each k anomaly
+        lam_lst = [] # Critical Value for each k anomaly
+        n = len(x)
+
+        if self.max_outliers is None:
+            self.max_outliers = len(x)
+
+        for i in range(1,self.max_outliers+1):
+            x_mean = np.mean(x)
+            x_std = np.std(x,ddof=1)
+            res = abs((x - x_mean) / x_std)
+            max_res = np.max(res)
+            max_ind = np.argmax(res)
+            p = 1 - self.alpha / (2*(n-i+1))
+            t_v = stats.t.ppf(p,(n-i-1)) # Get critical values from t-distribution based on p and n
+            lam_i = ((n-i)*t_v)/ np.sqrt((n-i-1+t_v**2)*(n-i+1)) # Calculate critical region (lambdas)
+            res_lst.append(max_res)
+            lam_lst.append(lam_i)
+            if max_res > lam_i:
+                outliers.append((ind.pop(max_ind),x.pop(max_ind)))
+        # Record outlier Points
+        outliers_index = [x[0] for x in outliers]
+
+        ESD_stats = pd.DataFrame()
+        ESD_stats['ESD Test Statistic'] = res_lst
+        ESD_stats['Critical Value'] = lam_lst
+        self.ESD_stats = ESD_stats
+
+        return outliers_index
+
+    def evaluate(self,data,col_name,anom_detect=True):
+        '''Anomalous datapoint evaluation method
+
+        This method takes a timeseries data set in and calculates the moving
+        average and if desired identifies the anomalous points in the data set
+        within the significance level set.
+
+        Parameters
+        ----------
+        data : pandas.DataFrame
+            Raw data with index as the time component and one dimensional
+            array for values containing the raw data points.
+        anom_detect : bool
+            Identify anomalous data points, default is true, if set to false
+            only the moving average for the data will be calculated.
+
+        Attributes
+        ----------
+        anoma_points : pandas.DataFrame
+            DataFrame containing the anomalous datapoints identified.
+        '''
+        # Check data is in the right format and right order and dimension
+        # Check for example if there are large gaps in the data.
+        df = pd.DataFrame(data)
+        df.sort_index()
+
+        if df.shape[1] != 1:
+            raise IndexError\
+                ('Insufficient dimensions provided, input data needs time and value columns.')
+
+        if self.method == 'average':
+            data_points = df.values
+            self.moving_average(data_points)
+            df = self.deviation_stats(df)
+            self.results = df
+
+        if anom_detect:
+            outliers_index = self.esd_test(df[['residual']])
+            anoma_points = pd.DataFrame(df[[col_name]].iloc[outliers_index,0].sort_index())
+            self.anoma_points = anoma_points
+            return anoma_points
