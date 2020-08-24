@@ -1,0 +1,23 @@
+.data-field {
+    padding-top: 5px;
+    padding-right: 20px;
+}
+
+.input {
+    width: 160px;
+}
+
+#submitCSV {
+    width: 200px;
+    /* margin-left: 100px; */
+    margin-top: 50px;
+}
+
+#file-name-label {
+    margin-left: 15px;
+    margin-top: 5px;
+}
+
+#model-options {
+    margin-top: 20px;
+}

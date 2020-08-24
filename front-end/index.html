@@ -1,0 +1,102 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+
+    <title>Anomaly Detection for Google Trends Data</title>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.3/dist/Chart.min.js"></script>
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV" crossorigin="anonymous"></script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.0/css/bulma.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="section">
+        <div class="container">
+            <h1 class="title">Google Trends Anomaly Plotter</h1>
+            <p class="has-text-weight-normal">
+                How it works: Go to <a target="_blank" href="https://trends.google.com/trends/?geo=US">google trends</a>,
+                type something in, such as "the Lakers", and download the CSV of the plot. Upload that CSV below.
+            </p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <div class="container">
+            <div class="file">
+                <!-- Upload CSV -->
+                <label class="subtitle data-field">CSV data: </label>
+                <label class="file-label">
+                <input class="file-input" type="file" name="resume" onchange="readFile(this)" accept='.csv'>
+                <span class="file-cta">
+                    <span class="file-icon">
+                    <i class="fas fa-upload"></i>
+                    </span>
+                    <span class="file-label">
+                    Choose a file…
+                    </span>
+                </span>
+                </label>
+                <label id="file-name-label" class="has-text-weight-semibold"></label>
+            </div>
+
+            <!-- Select Seasonality -->
+            <div class="field">
+                <input id="seasonality-checkbox" type="checkbox" onchange="seasonalityChange(this)">
+                <label class="subtitle">Seasonality?</label>
+                <i class="fa fa-info-circle" data-toggle="tooltip" title="Are there seasons in the data? i.e. a generally repeating pattern every fixed number of points"></i>
+            </div>
+            
+            <div class="DBSCAN-parameter">
+                <label class="has-text-weight-semibold">Density-Based Spatial Clustering of Applications with Noise <a target="_blank" href="https://en.wikipedia.org/wiki/DBSCAN">(DBSCAN)</a></label>
+                <i class="fa fa-info-circle" data-toggle="tooltip" title="A machine learning clustering algorithm that is also useful for anomaly detection"></i>
+            </div>
+            
+            <div class="STL-parameter" hidden>
+                <label class="has-text-weight-semibold">Season-Trend decomposition using Loess <a target="_blank" href="https://en.wikipedia.org/wiki/Decomposition_of_time_series">(STL)</a></label>
+                <i class="fa fa-info-circle" data-toggle="tooltip" title="A statistics-based decomposition algorithm for time-series data with seasonality and a trend"></i>
+            </div>
+
+            <!-- Other options (starts with DBSCAN) -->
+            <div id="model-options">
+                <form class="field DBSCAN-parameter">
+                    <label class="label">Minimum # Points: <i class="fa fa-info-circle" data-toggle="tooltip" title="Minimum number of points to define a neighborhood. Recommended values in range [3, 5]"></i></label>
+                    <input class="input" id="min_pts" type="text" placeholder="Input integer > 1">
+                </form>
+                <form class="field DBSCAN-parameter">
+                    <label class="label">Epsilon: <i class="fa fa-info-circle" data-toggle="tooltip" title="Maximum distance between 2 points for one to be in the neighborhood of the other. Recommended values in range [0.05, 0.2]"></i></label>
+                    <input class="input" id="eps" type="text" placeholder="Input float (0, 1]">
+                </form>
+
+                <form class="field STL-parameter" hidden>
+                    <label class="label">Length of Season: <i class="fa fa-info-circle" data-toggle="tooltip" title="Length of a single season, such as 12 if points represent months and the pattern repeats every year"></i></label>
+                    <input class="input" id="period" type="text" placeholder="Input integer > 1">
+                </form>
+            </div>
+            
+            <!-- Plot button -->
+            <button class="button is-primary subtitle" id="submitCSV" type="submit" disabled>Plot Anomalies!</button>
+        </div>
+    </div>
+
+    <div class="container" width="400" height="400">
+        <canvas id="myChart"></canvas>
+    </div>
+
+    <!-- Enable all tooltips -->
+    <script>
+        $(document).ready(function(){
+          $('[data-toggle="tooltip"]').tooltip();
+        });
+    </script>
+
+    <script src="scripts.js"></script>
+</body>
+</html>
